@@ -24,13 +24,16 @@ import com.sk89q.worldedit.registry.state.Property;
 import com.sk89q.worldedit.util.concurrency.LazyReference;
 import org.enginehub.linbus.tree.LinCompoundTag;
 
-import java.util.HashSet;
+import java.util.Collections;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 /**
  * An immutable class that represents the state a block can be in.
+ *
+ * <p>Property values are not stored per state; they are derived from the state's index in its
+ * {@link BlockTypeStateList}. {@link #getStates()} exposes them through a lazily created view.</p>
  */
 @SuppressWarnings("unchecked")
 public class BlockState implements BlockStateHolder<BlockState> {
@@ -50,23 +53,31 @@ public class BlockState implements BlockStateHolder<BlockState> {
     }
 
     private final BlockType blockType;
-    private final Map<Property<?>, Object> values;
+    /**
+     * The owning state list, or {@code null} for states that store their own values (fuzzy states).
+     */
+    private final BlockTypeStateList stateList;
     private final int stateListIndex;
 
     private final BaseBlock emptyBaseBlock;
     private final LazyReference<String> lazyStringRepresentation;
 
     /**
+     * Created on the first {@link #getStates()} call. Immutable, so a racy publication is harmless.
+     */
+    private Map<Property<?>, Object> valuesView;
+
+    /**
      * The internal ID of the block state.
      */
     private volatile int internalId = BlockStateIdAccess.invalidId();
 
-    BlockState(BlockType blockType, Map<Property<?>, Object> values, int stateListIndex) {
+    BlockState(BlockType blockType, BlockTypeStateList stateList, int stateListIndex) {
         this.blockType = blockType;
-        this.values = values;
+        this.stateList = stateList;
         this.stateListIndex = stateListIndex;
         this.emptyBaseBlock = new BaseBlock(this);
-        this.lazyStringRepresentation = LazyReference.from(BlockStateHolder.super::getAsString);
+        this.lazyStringRepresentation = LazyReference.from(this::computeAsString);
     }
 
     @Override
@@ -76,31 +87,46 @@ public class BlockState implements BlockStateHolder<BlockState> {
 
     @Override
     public <V> BlockState with(final Property<V> property, final V value) {
-        if (this.stateListIndex == -1) {
+        if (this.stateList == null || this.stateListIndex == -1) {
             return this;
         }
-        Object currentValue = this.values.get(property);
+        int slot = stateList.slotOf(property);
+        if (slot == -1) {
+            return this;
+        }
+        Object currentValue = stateList.valueAt(stateListIndex, slot);
         if (Objects.equals(currentValue, value)) {
             return this;
         }
 
-        int newIndex = blockType.getInternalStateList().updateIndexOrInvalid(
-            this.stateListIndex, property, currentValue, value
-        );
+        int newIndex = stateList.updateIndexOrInvalid(this.stateListIndex, property, currentValue, value);
         if (newIndex == -1) {
             return this;
         }
-        return blockType.getInternalStateList().get(newIndex);
+        return stateList.get(newIndex);
     }
 
     @Override
     public <V> V getState(final Property<V> property) {
-        return (V) this.values.get(property);
+        if (this.stateList == null) {
+            return (V) getStates().get(property);
+        }
+        int slot = stateList.slotOf(property);
+        return slot == -1 ? null : (V) stateList.valueAt(stateListIndex, slot);
     }
 
     @Override
     public Map<Property<?>, Object> getStates() {
-        return this.values;
+        Map<Property<?>, Object> view = this.valuesView;
+        if (view == null) {
+            if (stateList == null || stateList.propertyCount() == 0) {
+                view = Collections.emptyMap();
+            } else {
+                view = new BlockStateValuesView(stateList, stateListIndex);
+            }
+            this.valuesView = view;
+        }
+        return view;
     }
 
     @Override
@@ -115,28 +141,27 @@ public class BlockState implements BlockStateHolder<BlockState> {
         if (!getBlockType().equals(o.getBlockType())) {
             return false;
         }
-
-        Set<Property<?>> differingProperties = new HashSet<>();
-        for (Property<?> state : o.getStates().keySet()) {
-            if (getState(state) == null) {
-                differingProperties.add(state);
+        if (this.stateList == null) {
+            // Fuzzy states hold their own values
+            for (Map.Entry<Property<?>, Object> entry : getStates().entrySet()) {
+                Object otherValue = o.getState(entry.getKey());
+                if (otherValue != null && !Objects.equals(entry.getValue(), otherValue)) {
+                    return false;
+                }
             }
+            return true;
         }
-        for (Property<?> property : getStates().keySet()) {
-            if (o.getState(property) == null) {
-                differingProperties.add(property);
-            }
+        if (o instanceof BlockState other && other.stateList == this.stateList) {
+            // Same state list: every property is present on both, so the index identifies the values
+            return this.stateListIndex == other.stateListIndex;
         }
-
-        for (Property<?> property : getStates().keySet()) {
-            if (differingProperties.contains(property)) {
-                continue;
-            }
-            if (!Objects.equals(getState(property), o.getState(property))) {
+        // Only properties present on both sides are compared
+        for (int slot = 0; slot < stateList.propertyCount(); slot++) {
+            Object otherValue = o.getState(stateList.propertyAt(slot));
+            if (otherValue != null && !Objects.equals(stateList.valueAt(stateListIndex, slot), otherValue)) {
                 return false;
             }
         }
-
         return true;
     }
 
@@ -163,6 +188,27 @@ public class BlockState implements BlockStateHolder<BlockState> {
         return lazyStringRepresentation.getValue();
     }
 
+    private String computeAsString() {
+        if (this.stateList == null) {
+            return BlockStateHolder.super.getAsString();
+        }
+        int count = stateList.propertyCount();
+        if (count == 0) {
+            return blockType.id();
+        }
+        // Same format as BlockStateHolder#getAsString, without going through getStates()
+        StringBuilder builder = new StringBuilder(blockType.id()).append('[');
+        for (int slot = 0; slot < count; slot++) {
+            if (slot > 0) {
+                builder.append(',');
+            }
+            builder.append(stateList.propertyAt(slot).getName())
+                .append('=')
+                .append(stateList.valueAt(stateListIndex, slot).toString().toLowerCase(Locale.ROOT));
+        }
+        return builder.append(']').toString();
+    }
+
     @Override
     public String toString() {
         return getAsString();
@@ -177,13 +223,12 @@ public class BlockState implements BlockStateHolder<BlockState> {
         return equalsFuzzy(blockState);
     }
 
-    private Integer hashCodeCache = null;
-
     @Override
     public int hashCode() {
-        if (hashCodeCache == null) {
-            hashCodeCache = Objects.hash(blockType, values);
+        if (this.stateList == null) {
+            return Objects.hash(blockType, getStates());
         }
-        return hashCodeCache;
+        // The index identifies the property values within a block type
+        return 31 * blockType.hashCode() + stateListIndex;
     }
 }

@@ -101,3 +101,23 @@ En el analizador de heap, comparar memoria retenida por WorldEdit y rutas de ret
 Aceptación: mismos estados/resultados, ningún error nuevo, descenso repetible del heap vivo atribuible a WorldEdit y sin regresión relevante de arranque o edición. Los aproximadamente 1,5 GiB del experimento de retirada de mods no son una promesa del ahorro de este parche.
 
 Reversión: detener la copia de pruebas, retirar el JAR candidato, restaurar el JAR de referencia y el snapshot del mundo de esa ejecución; reiniciar. Conservar logs y dumps de la ejecución fallida.
+
+## Segunda pasada (7.3.8-4fix): valores de propiedades virtuales
+
+Después de M1 cada `BlockState` no-singleton seguía guardando un `Object2ObjectArrayMap` envuelto en `Object2ObjectMaps.unmodifiable`, más su `Object[]` de valores. Además, el `EntrySet` y el `UnmodifiableSet` se materializaban en todos los estados porque `hashCode()` hacía `Objects.hash(blockType, values)`. Esa información ya está codificada en `stateListIndex` y en la `stride` de cada propiedad.
+
+Cambios:
+
+- `BlockState` guarda solo `blockType`, su `BlockTypeStateList` e índice. `getState()` y `with()` derivan el valor con `(index / stride) % valueCount`, sin allocations.
+- `getStates()` devuelve una vista inmutable `BlockStateValuesView`, creada en la primera llamada y reutilizada después. Cumple el contrato de `Map` (`equals`/`hashCode`) y conserva el orden de declaración.
+- `hashCode()` (`31 * blockType.hashCode() + index`, sin `Integer` cacheado), `equals()`/`equalsFuzzy()` (comparación por índice dentro de la misma lista, sin `HashSet`) y `getAsString()` no tocan la vista.
+- `FuzzyBlockState` conserva su propio mapa: no son estados por combinación.
+
+Probe sintético (mismos 46.976 estados, tres rondas alternadas, `results-20261006-4fix.txt`):
+
+| Métrica | M1 (`state-indexed-1`) | 4fix |
+|---|---:|---:|
+| Heap retenido | ~13,78 MB (~293 B/estado) | ~8,09 MB (~172 B/estado) |
+| Tiempo de generación | ~13,1 ms | ~5,3 ms |
+
+Huella idéntica (`-50669888864679999`) en todas las ejecuciones. El probe usa 5 propiedades por estado; en el modpack real el ahorro por estado será algo menor (`Object[]` más pequeños), aunque el `Integer` de `hashCode` eliminado no aparece en el probe. Criterio en el servidor: `spark heapsummary` con ~753.818 `BlockState` y `Object2ObjectArrayMap`, `Object2ObjectMaps$UnmodifiableMap`, `Object2ObjectArrayMap$EntrySet` y `ObjectSets$UnmodifiableSet` cerca de 0.

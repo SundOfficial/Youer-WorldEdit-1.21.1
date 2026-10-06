@@ -30,8 +30,8 @@ import java.util.Map;
 final class SingletonBlockTypeStateList extends BlockTypeStateList {
     private final BlockState state;
 
-    SingletonBlockTypeStateList(BlockState state) {
-        this.state = state;
+    SingletonBlockTypeStateList(BlockType blockType) {
+        this.state = new BlockState(blockType, this, 0);
     }
 
     @Override
@@ -56,5 +56,25 @@ final class SingletonBlockTypeStateList extends BlockTypeStateList {
     @Override
     public int updateIndexOrInvalid(int currentIndex, Property<?> property, Object oldValue, Object newValue) {
         return -1;
+    }
+
+    @Override
+    int propertyCount() {
+        return 0;
+    }
+
+    @Override
+    Property<?> propertyAt(int slot) {
+        throw new IndexOutOfBoundsException(slot);
+    }
+
+    @Override
+    int slotOf(Object property) {
+        return -1;
+    }
+
+    @Override
+    Object valueAt(int stateIndex, int slot) {
+        throw new IndexOutOfBoundsException(slot);
     }
 }

@@ -27,16 +27,21 @@ import com.sk89q.worldedit.util.concurrency.LazyReference;
 import org.enginehub.linbus.tree.LinCompoundTag;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -174,6 +179,99 @@ class BlockTypeStateListTest {
         assertSame(type.getState(Map.of(a, 1, b, 2)), fuzzy.getFullState());
         assertTrue(fuzzy.equalsFuzzy(fuzzy.getFullState()));
         assertSame(type.getDefaultState(), type.getFuzzyMatcher().getFullState());
+    }
+
+    private static Object valuesView(BlockState state) throws ReflectiveOperationException {
+        Field field = BlockState.class.getDeclaredField("valuesView");
+        field.setAccessible(true);
+        return field.get(state);
+    }
+
+    @Test
+    void valuesViewIsLazyCachedAndBehavesLikeAMap() {
+        IntegerProperty z = property("z", 2);
+        IntegerProperty a = property("a", 3);
+        IntegerProperty foreign = property("foreign", 2);
+        BlockType type = new TestBlockType(List.of(z, a));
+        BlockState state = type.getDefaultState().with(z, 1).with(a, 2);
+
+        Map<Property<?>, Object> view = state.getStates();
+        assertSame(view, state.getStates());
+        assertSame(view, state.toBaseBlock().getStates());
+
+        Map<Property<?>, Object> expected = new LinkedHashMap<>();
+        expected.put(z, 1);
+        expected.put(a, 2);
+        assertEquals(expected, view);
+        assertEquals(view, expected);
+        assertEquals(Map.of(z, 1, a, 2), view);
+        assertEquals(expected.hashCode(), view.hashCode());
+        assertEquals(List.copyOf(expected.entrySet()), List.copyOf(view.entrySet()));
+        assertEquals(List.of(z, a), List.copyOf(view.keySet()));
+        assertEquals(2, view.size());
+        assertTrue(view.containsKey(z));
+        assertTrue(view.containsKey(property("z", 2)));
+        assertFalse(view.containsKey(foreign));
+        assertFalse(view.containsKey("z"));
+        assertNull(view.get(foreign));
+        assertNull(state.getState(foreign));
+        assertNotEquals(Map.of(z, 1), view);
+        assertNotEquals(Map.of(z, 1, a, 1), view);
+
+        assertThrows(UnsupportedOperationException.class, () -> view.remove(z));
+        assertThrows(UnsupportedOperationException.class, view::clear);
+        assertThrows(UnsupportedOperationException.class, () -> view.keySet().iterator().remove());
+        assertEquals(expected, view);
+
+        assertTrue(new TestBlockType(List.of()).getDefaultState().getStates().isEmpty());
+    }
+
+    @Test
+    void stateOperationsDoNotMaterializeValuesView() throws ReflectiveOperationException {
+        IntegerProperty a = property("a", 2);
+        IntegerProperty b = property("b", 3);
+        BlockType type = new TestBlockType(List.of(a, b));
+        for (BlockState state : type.getAllStates()) {
+            state.hashCode();
+            state.equals(type.getDefaultState());
+            state.equalsFuzzy(type.getDefaultState().toBaseBlock());
+            state.equalsFuzzy(FuzzyBlockState.builder().type(type).withProperty(a, 1).build());
+            state.getAsString();
+            state.getState(a);
+            state.with(b, 2);
+            type.getState(Map.of(a, state.getState(a), b, state.getState(b)));
+        }
+        for (BlockState state : type.getAllStates()) {
+            assertNull(valuesView(state), state.getAsString());
+        }
+    }
+
+    @Test
+    void equalityAndHashingAreConsistentAcrossHolders() {
+        IntegerProperty a = property("a", 2);
+        IntegerProperty b = property("b", 3);
+        BlockType type = new TestBlockType(List.of(a, b));
+        BlockType sameId = new TestBlockType(List.of(a, b));
+        Set<BlockState> distinct = new HashSet<>(type.getAllStates());
+        assertEquals(type.getAllStates().size(), distinct.size());
+        for (BlockState state : type.getAllStates()) {
+            BlockState twin = sameId.getState(state.getStates());
+            assertEquals(state, twin);
+            assertEquals(state.hashCode(), twin.hashCode());
+            assertTrue(distinct.contains(twin));
+            for (BlockState other : type.getAllStates()) {
+                assertEquals(state == other, state.equals(other));
+                assertEquals(state == other, state.equals(sameId.getState(other.getStates())));
+            }
+            FuzzyBlockState fuzzy = FuzzyBlockState.builder().type(type).withProperty(a, state.getState(a)).build();
+            assertTrue(state.equalsFuzzy(fuzzy));
+            assertTrue(fuzzy.equalsFuzzy(state));
+            assertEquals(state.getState(a), fuzzy.getFullState().getState(a));
+            assertTrue(state.equalsFuzzy(state.toBaseBlock()));
+            assertTrue(state.toBaseBlock().equalsFuzzy(state));
+            assertEquals("test:states[a=" + state.getState(a) + ",b=" + state.getState(b) + "]", state.getAsString());
+        }
+        assertEquals("test:states", new TestBlockType(List.of()).getDefaultState().getAsString());
     }
 
     @Test

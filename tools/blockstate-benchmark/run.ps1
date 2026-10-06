@@ -17,7 +17,7 @@ $javac = Join-Path $JavaHome 'bin/javac.exe'
 & $javac -proc:none -cp "$baselinePath;$dependencies" -d $outputDirectory (Join-Path $PSScriptRoot 'BlockStateMemoryProbe.java')
 if ($LASTEXITCODE -ne 0) { throw 'Probe compilation failed' }
 Get-FileHash -LiteralPath $baselinePath, $candidatePath | Format-List | Out-File (Join-Path $outputDirectory 'hashes.txt')
-& $java -version 2>&1 | Out-File (Join-Path $outputDirectory 'java-version.txt')
+& cmd /c "`"$java`" -version 2>&1" | Out-File (Join-Path $outputDirectory 'java-version.txt')
 for ($round = 1; $round -le $Rounds; $round++) {
     foreach ($jar in @($baselinePath, $candidatePath)) {
         & $java -Xms512m -Xmx2g -XX:+UseG1GC -cp "$outputDirectory;$jar;$dependencies" BlockStateMemoryProbe |

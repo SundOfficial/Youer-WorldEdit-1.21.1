@@ -23,7 +23,6 @@ import com.sk89q.worldedit.extension.platform.Watchdog;
 import com.sk89q.worldedit.registry.state.Property;
 import it.unimi.dsi.fastutil.objects.AbstractObjectList;
 
-import java.util.Collections;
 import java.util.Map;
 
 /**
@@ -34,7 +33,7 @@ abstract class BlockTypeStateList extends AbstractObjectList<BlockState> {
     static BlockTypeStateList createFor(BlockType blockType, Watchdog watchdog) {
         if (blockType.getProperties().isEmpty()) {
             // Special case, we have only one state: the default state
-            return new SingletonBlockTypeStateList(new BlockState(blockType, Collections.emptyMap(), 0));
+            return new SingletonBlockTypeStateList(blockType);
         }
         return new DefaultBlockTypeStateList(blockType, watchdog);
     }
@@ -58,4 +57,36 @@ abstract class BlockTypeStateList extends AbstractObjectList<BlockState> {
      * @return the updated index, or {@code -1} if the property or value is invalid
      */
     public abstract int updateIndexOrInvalid(int currentIndex, Property<?> property, Object oldValue, Object newValue);
+
+    /**
+     * Gets the number of properties of the block type.
+     *
+     * @return the property count
+     */
+    abstract int propertyCount();
+
+    /**
+     * Gets the property stored in the given slot, in declaration order.
+     *
+     * @param slot the slot, in {@code [0, propertyCount())}
+     * @return the property
+     */
+    abstract Property<?> propertyAt(int slot);
+
+    /**
+     * Finds the slot of a property.
+     *
+     * @param property the property
+     * @return the slot, or {@code -1} if the block type does not have the property
+     */
+    abstract int slotOf(Object property);
+
+    /**
+     * Derives the value of a property for a state from its index, without allocating.
+     *
+     * @param stateIndex the state index
+     * @param slot the property slot
+     * @return the value
+     */
+    abstract Object valueAt(int stateIndex, int slot);
 }

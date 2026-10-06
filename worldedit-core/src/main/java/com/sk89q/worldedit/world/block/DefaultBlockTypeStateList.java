@@ -19,12 +19,9 @@
 
 package com.sk89q.worldedit.world.block;
 
-import com.google.common.base.Verify;
 import com.google.common.collect.ImmutableList;
 import com.sk89q.worldedit.extension.platform.Watchdog;
 import com.sk89q.worldedit.registry.state.Property;
-import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 
 import java.util.List;
 import java.util.Map;
@@ -92,56 +89,16 @@ final class DefaultBlockTypeStateList extends BlockTypeStateList {
     }
 
     private ImmutableList<BlockState> createStates(int totalStates, BlockType blockType, Watchdog watchdog) {
-        int[] propertyValueCounts = new int[propertyEntries.size()];
-
-        // We can share the propsArray across all states since it will never differ
-        Property<?>[] propsArray = new Property<?>[propertyEntries.size()];
-        for (int i = 0; i < propsArray.length; i++) {
-            propsArray[i] = propertyEntries.get(i).property;
-        }
-
-        // Values array caches the current values for each property
-        Object[] valuesArray = new Object[propertyEntries.size()];
-        for (int i = 0; i < valuesArray.length; i++) {
-            valuesArray[i] = propertyEntries.get(i).values.getFirst();
-        }
-
+        // States do not store their property values; they are derived from the index on demand
         ImmutableList.Builder<BlockState> statesBuilder = ImmutableList.builderWithExpectedSize(totalStates);
         for (int i = 0; i < totalStates; i++) {
-            // Create the BlockState
-            statesBuilder.add(new BlockState(
-                blockType,
-                Object2ObjectMaps.unmodifiable(
-                    // No need to clone propsArray, but we need a new valuesArray each time
-                    new Object2ObjectArrayMap<>(propsArray, valuesArray.clone())
-                ),
-                i
-            ));
+            statesBuilder.add(new BlockState(blockType, this, i));
 
             if (watchdog != null && (i & 1023) == 0) {
                 watchdog.tick();
             }
-            if (i + 1 >= totalStates) {
-                break;
-            }
-            prepareNextValueInSlot(propertyValueCounts, valuesArray, propertyEntries.size() - 1);
         }
         return statesBuilder.build();
-    }
-
-    private void prepareNextValueInSlot(int[] propertyValueCounts, Object[] valuesArray, int index) {
-        PropertyEntry entry = propertyEntries.get(index);
-        propertyValueCounts[index]++;
-        if (propertyValueCounts[index] >= entry.values.size()) {
-            // Reset this property and increment the next one
-            propertyValueCounts[index] = 0;
-            valuesArray[index] = entry.values.getFirst();
-            Verify.verify(index > 0, "Tried to increment past first property");
-            prepareNextValueInSlot(propertyValueCounts, valuesArray, index - 1);
-        } else {
-            // Set the next value for this property
-            valuesArray[index] = entry.values.get(propertyValueCounts[index]);
-        }
     }
 
     @Override
@@ -212,5 +169,39 @@ final class DefaultBlockTypeStateList extends BlockTypeStateList {
             }
         }
         return -1;
+    }
+
+    @Override
+    int propertyCount() {
+        return propertyEntries.size();
+    }
+
+    @Override
+    Property<?> propertyAt(int slot) {
+        return propertyEntries.get(slot).property;
+    }
+
+    @Override
+    int slotOf(Object property) {
+        // Properties are usually the same instances, so try identity before equality
+        for (int i = 0; i < propertyEntries.size(); i++) {
+            if (propertyEntries.get(i).property == property) {
+                return i;
+            }
+        }
+        if (property instanceof Property<?>) {
+            for (int i = 0; i < propertyEntries.size(); i++) {
+                if (propertyEntries.get(i).property.equals(property)) {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+
+    @Override
+    Object valueAt(int stateIndex, int slot) {
+        PropertyEntry entry = propertyEntries.get(slot);
+        return entry.values.get((stateIndex / entry.stride) % entry.values.size());
     }
 }

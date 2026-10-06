@@ -36,12 +36,20 @@ import static com.google.common.base.Preconditions.checkNotNull;
  */
 public class FuzzyBlockState extends BlockState {
 
+    private final Map<Property<?>, Object> values;
+
     FuzzyBlockState(BlockType blockType) {
-        super(blockType, Collections.emptyMap(), -1);
+        this(blockType, Collections.emptyMap());
     }
 
     private FuzzyBlockState(BlockType blockType, Map<Property<?>, Object> values) {
-        super(blockType, Collections.unmodifiableMap(new HashMap<>(values)), -1);
+        super(blockType, null, -1);
+        this.values = values.isEmpty() ? Collections.emptyMap() : Collections.unmodifiableMap(new HashMap<>(values));
+    }
+
+    @Override
+    public Map<Property<?>, Object> getStates() {
+        return this.values;
     }
 
     /**
