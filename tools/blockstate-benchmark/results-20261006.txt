@@ -1,0 +1,6 @@
+RESULT states=46976 retainedBytes=111099480 generationNanos=21623912300 fingerprint=-50669888864679999 source=file:/V:/A_SUND/WORLDEDIT/DEV/build/backport/baseline/worldedit-youer-7.3.8-2.jar
+RESULT states=46976 retainedBytes=13788616 generationNanos=14231300 fingerprint=-50669888864679999 source=file:/V:/A_SUND/WORLDEDIT/DEV/worldedit-bukkit/build/libs/worldedit-youer-7.3.8-state-indexed-1.jar
+RESULT states=46976 retainedBytes=111068552 generationNanos=23590974400 fingerprint=-50669888864679999 source=file:/V:/A_SUND/WORLDEDIT/DEV/build/backport/baseline/worldedit-youer-7.3.8-2.jar
+RESULT states=46976 retainedBytes=13794872 generationNanos=14089800 fingerprint=-50669888864679999 source=file:/V:/A_SUND/WORLDEDIT/DEV/worldedit-bukkit/build/libs/worldedit-youer-7.3.8-state-indexed-1.jar
+RESULT states=46976 retainedBytes=111029008 generationNanos=22926004700 fingerprint=-50669888864679999 source=file:/V:/A_SUND/WORLDEDIT/DEV/build/backport/baseline/worldedit-youer-7.3.8-2.jar
+RESULT states=46976 retainedBytes=13789616 generationNanos=14516800 fingerprint=-50669888864679999 source=file:/V:/A_SUND/WORLDEDIT/DEV/worldedit-bukkit/build/libs/worldedit-youer-7.3.8-state-indexed-1.jar

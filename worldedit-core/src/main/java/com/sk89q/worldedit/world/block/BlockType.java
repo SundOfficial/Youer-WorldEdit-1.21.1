@@ -21,9 +21,9 @@ package com.sk89q.worldedit.world.block;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Iterables;
 import com.sk89q.worldedit.WorldEdit;
 import com.sk89q.worldedit.extension.platform.Capability;
+import com.sk89q.worldedit.extension.platform.Watchdog;
 import com.sk89q.worldedit.registry.Keyed;
 import com.sk89q.worldedit.registry.NamespacedRegistry;
 import com.sk89q.worldedit.registry.state.Property;
@@ -34,6 +34,7 @@ import com.sk89q.worldedit.world.item.ItemTypes;
 import com.sk89q.worldedit.world.registry.BlockMaterial;
 import com.sk89q.worldedit.world.registry.LegacyMapper;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -61,8 +62,8 @@ public class BlockType implements Keyed {
         = LazyReference.from(() -> WorldEdit.getInstance().getPlatformManager()
         .queryCapability(Capability.GAME_HOOKS).getRegistries().getBlockRegistry().getMaterial(this));
     @SuppressWarnings("this-escape")
-    private final LazyReference<Map<Map<Property<?>, Object>, BlockState>> blockStatesMap
-        = LazyReference.from(() -> BlockState.generateStateMap(this));
+    private final LazyReference<BlockTypeStateList> internalStateList
+        = LazyReference.from(this::generateStateList);
 
     @SuppressWarnings("this-escape")
     @Deprecated
@@ -87,15 +88,28 @@ public class BlockType implements Keyed {
     }
 
     private BlockState computeDefaultState() {
-        BlockState defaultState = Iterables.getFirst(getBlockStatesMap().values(), null);
+        BlockState defaultState = getInternalStateList().get(0);
         if (values != null) {
             defaultState = values.apply(defaultState);
         }
         return defaultState;
     }
 
-    private Map<Map<Property<?>, Object>, BlockState> getBlockStatesMap() {
-        return blockStatesMap.getValue();
+    BlockTypeStateList getInternalStateList() {
+        return internalStateList.getValue();
+    }
+
+    private BlockTypeStateList generateStateList() {
+        long startTime = System.nanoTime();
+        Watchdog watchdog = WorldEdit.getInstance().getPlatformManager().queryCapability(Capability.GAME_HOOKS)
+            .getWatchdog();
+        BlockTypeStateList result = BlockTypeStateList.createFor(this, watchdog);
+        long elapsedMillis = (System.nanoTime() - startTime) / 1_000_000;
+        if (elapsedMillis > 5000) {
+            WorldEdit.logger.warn("Took more than 5 seconds to generate states for {}. State count: {}. {}ms elapsed.",
+                id(), result.size(), elapsedMillis);
+        }
+        return result;
     }
 
     /**
@@ -179,7 +193,7 @@ public class BlockType implements Keyed {
      * @return All possible states
      */
     public List<BlockState> getAllStates() {
-        return ImmutableList.copyOf(getBlockStatesMap().values());
+        return Collections.unmodifiableList(getInternalStateList());
     }
 
     /**
@@ -188,9 +202,8 @@ public class BlockType implements Keyed {
      * @return The state, if it exists
      */
     public BlockState getState(Map<Property<?>, Object> key) {
-        BlockState state = getBlockStatesMap().get(key);
-        checkArgument(state != null, "%s has no state for %s", this, key);
-        return state;
+        BlockTypeStateList states = getInternalStateList();
+        return states.get(states.calculateIndex(key));
     }
 
     /**

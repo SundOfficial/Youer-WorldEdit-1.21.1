@@ -273,9 +273,12 @@ public class DefaultBlockParser extends InputParser<BaseBlock> {
                 if (split.length == 0) {
                     throw new InputParseException(TranslatableComponent.of("worldedit.error.parser.invalid-colon"));
                 } else if (split.length == 1) {
-                    state = LegacyMapper.getInstance().getBlockFromLegacy(Integer.parseInt(split[0]));
+                    int legacyTypeId = Integer.parseInt(split[0]);
+                    state = LegacyMapper.getInstance().getBlockFromLegacy(legacyTypeId);
                 } else {
-                    state = LegacyMapper.getInstance().getBlockFromLegacy(Integer.parseInt(split[0]), Integer.parseInt(split[1]));
+                    int legacyTypeId = Integer.parseInt(split[0]);
+                    int legacyDataValue = Integer.parseInt(split[1]);
+                    state = LegacyMapper.getInstance().getBlockFromLegacy(legacyTypeId, legacyDataValue);
                 }
                 if (state != null) {
                     blockType = state.getBlockType();

@@ -186,7 +186,7 @@ public final class LegacyMapper {
         }
     }
 
-    public static LegacyMapper getInstance() {
+    public static synchronized LegacyMapper getInstance() {
         if (INSTANCE == null) {
             INSTANCE = new LegacyMapper();
         }

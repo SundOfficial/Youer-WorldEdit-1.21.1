@@ -1,0 +1,14 @@
+gradle.projectsEvaluated {
+    def core = gradle.rootProject.findProject(':worldedit-core')
+    if (core == null) {
+        return
+    }
+    core.tasks.register('writeProbeClasspath') {
+        doLast {
+            def destination = new File(gradle.rootProject.projectDir, 'build/backport/runtime-classpath.txt')
+            destination.parentFile.mkdirs()
+            destination.text = core.sourceSets.test.runtimeClasspath.files
+                .findAll { it.name.endsWith('.jar') }.collect { it.absolutePath }.join(File.pathSeparator)
+        }
+    }
+}

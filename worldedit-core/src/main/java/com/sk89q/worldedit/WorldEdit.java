@@ -72,7 +72,6 @@ import com.sk89q.worldedit.world.block.BlockStateHolder;
 import com.sk89q.worldedit.world.block.BlockType;
 import com.sk89q.worldedit.world.registry.BundledBlockData;
 import com.sk89q.worldedit.world.registry.BundledItemData;
-import com.sk89q.worldedit.world.registry.LegacyMapper;
 import org.apache.logging.log4j.Logger;
 
 import java.io.DataInputStream;
@@ -401,12 +400,11 @@ public final class WorldEdit {
     }
 
     /**
-     * Load the bundled mappings.
+     * Load the bundled block and item data. Legacy mappings are loaded on first use.
      */
     public void loadMappings() {
         BundledBlockData.getInstance(); // Load block registry
         BundledItemData.getInstance(); // Load item registry
-        LegacyMapper.getInstance(); // Load item registry
     }
 
     /**
